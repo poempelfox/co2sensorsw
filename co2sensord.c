@@ -185,7 +185,9 @@ static void printtooutbuf(char * outbuf, int oblen, struct daemondata * dd) {
 static void dotryrestart(struct daemondata * dd, char ** argv) {
   struct daemondata * curdd = dd;
 
-  if (!restartonerror) { return; }
+  if (!restartonerror) {
+    exit(1);
+  }
   /* close all open sockets */
   while (curdd != NULL) {
     close(curdd->fd);
@@ -299,7 +301,6 @@ static void dodaemon(int hidrawfd, struct daemondata * dd, char ** argv) {
       if (errno != EINTR) {
         perror("ERROR: error on select()");
         dotryrestart(dd, argv);
-        exit(1);
       }
     } else {
       if (FD_ISSET(hidrawfd, &mylsocks)) {
