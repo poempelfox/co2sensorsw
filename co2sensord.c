@@ -37,11 +37,16 @@ int verblev = 1;
 int runinforeground = 0;
 unsigned char * hidrawdevicepath = "/dev/hidraw9";
 int restartonerror = 0;
+/* The device does some weird pseudo-crypto with the transmitted data.
+ * The following is just a random key we generated ourselves for that.
+ * It is sent when requesting data from the device, and the device then
+ * encrypts the data with it. Whatever that is supposed to be good for
+ * on an USB link is beyond me... */
 unsigned char keyforpseudocrypto[8] = { 0xa9, 0xd2, 0x22, 0x7f,
                                         0x04, 0xbc, 0x93, 0x99 };
 double lasttemp = -274.0;
 double lasthum = -1.0;
-unsigned long lastco2 = 0;
+unsigned long lastco2 = 65533;
 
 struct daemondata {
   uint16_t port;
@@ -158,7 +163,11 @@ static void printtooutbuf(char * outbuf, int oblen, struct daemondata * dd) {
           }
         }
       } else if (*pos == 'C') { /* CO2 */
-        outbuf += sprintf(outbuf, "%u", (unsigned int)lastco2);
+        if (lastco2 >= 65533) { /* No data yet */
+          outbuf += sprintf(outbuf, "%s", "N/A");
+        } else {
+          outbuf += sprintf(outbuf, "%lu", lastco2);
+        }
       } else if (*pos == 'r') { /* carriage return */
         *outbuf = '\r';
         outbuf++;
@@ -196,6 +205,7 @@ static void dotryrestart(struct daemondata * dd, char ** argv) {
   fprintf(stderr, "Will try to restart in %d second(s)...\n", restartonerror);
   sleep(restartonerror);
   execv(argv[0], argv);
+  exit(1); /* This should of course never be reached */
 }
 
 /* This decrypts the 8 byte buffer crypted with the weird CO2 sensor
