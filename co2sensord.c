@@ -240,8 +240,6 @@ void decrypt_8byte_buf(uint8_t * buf) {
 
 #define LLSIZE 1000
 static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv) {
-  static unsigned char lastline[LLSIZE];
-  static unsigned int llpos = 0;
   unsigned char buf[8];
   int ret; int i;
 
