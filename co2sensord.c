@@ -240,7 +240,7 @@ void decrypt_8byte_buf(uint8_t * buf) {
 
 static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv) {
   unsigned char buf[8];
-  int ret; int i;
+  int ret; int i; int isencrypted = 1;
 
   ret = read(hidrawfd, buf, sizeof(buf));
   if (ret < 0) {
@@ -250,9 +250,22 @@ static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv)
   if (ret != 8) {
     return 0;
   }
-  decrypt_8byte_buf(buf);
+  /* Some devices send the data un"encrypted", but of course there does not
+   * seem to be a proper way to find out if it does. So instead we use the
+   * following heuristic, courtesy of
+   * https://github.com/wreiner/officeweather/pull/2 :
+   * If byte 4 which is always 0x0d already is 0x0d before decryption, and
+   * the checksum already is correct, then we can safely assume this does not
+   * need to be decrypted */
+  uint8_t checksum = buf[0] + buf[1] + buf[2];
+  if ((buf[4] == 0x0d) && (checksum == buf[3])) {
+    isencrypted = 0;
+  }
+  if (isencrypted > 0) {
+    decrypt_8byte_buf(buf);
+  }
   if (verblev > 3) {
-    printf("Received something from the device:");
+    printf("Received something %s from the device:", (isencrypted ? "encrypted" : "unencrypted"));
     for (i = 0; i < ret; i++) {
       printf(" %02x", buf[i]);
     }
@@ -266,7 +279,7 @@ static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv)
    * bytes 5-7 are 0x00. */
   uint16_t valrcvd = (buf[1] << 8) | buf[2];
   if (buf[4] != 0x0d) { return 0; }
-  uint8_t checksum = buf[0] + buf[1] + buf[2];
+  checksum = buf[0] + buf[1] + buf[2];
   if (checksum != buf[3]) { return 0; }
   /* OK, this looks valid so far. What is it? */
   if        (buf[0] == 0x50) { /* CO2 */
@@ -278,7 +291,12 @@ static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv)
   } else if (buf[0] == 0x44) { /* Humidity */
     /* This is untested, my device does not support it */
     lasthum = (double)valrcvd / 100.0;
-    VERBPRINT(1, "Received Humidity-data: Hum=%.0lf%%\n", lasthum);
+    VERBPRINT(1, "Received Humidity-data: Hum=%.1lf%%\n", lasthum);
+  } else if (buf[0] == 0x41) { /* also Humidity */
+    lasthum = (double)valrcvd / 100.0;
+    VERBPRINT(1, "Received Humidity-data: Hum=%.1lf%%\n", lasthum);
+  } else {
+    VERBPRINT(3, "Received data of unknown type %x: %ud 0x%x\n", buf[0], valrcvd, valrcvd);
   }
   return ret;
 }
@@ -394,13 +412,14 @@ int main(int argc, char ** argv)
       int l; int optval;
       struct daemondata * newdd;
       struct sockaddr_in6 soa;
+      unsigned int port;
 
       if (curarg >= argc) continue;
       newdd = calloc(sizeof(struct daemondata), 1);
       newdd->next = mydaemondata;
       mydaemondata = newdd;
       l = sscanf(argv[curarg], "%u:%999[^\n]",
-                 &mydaemondata->port, &mydaemondata->outputformat[0]);
+                 &port, &mydaemondata->outputformat[0]);
       if (l < 1) {
         fprintf(stderr, "ERROR: failed to parse daemon command parameter '%s'\n", argv[curarg]);
         exit(1);
@@ -408,6 +427,7 @@ int main(int argc, char ** argv)
       if (l == 1) {
         strcpy((char *)&mydaemondata->outputformat[0], "%C %T");
       }
+      mydaemondata->port = port;
       /* Open the port */
       mydaemondata->fd = socket(PF_INET6, SOCK_STREAM, 0);
       soa.sin6_family = AF_INET6;
