@@ -296,7 +296,7 @@ static int processhidrawdata(int hidrawfd, struct daemondata * dd, char ** argv)
     lasthum = (double)valrcvd / 100.0;
     VERBPRINT(1, "Received Humidity-data: Hum=%.1lf%%\n", lasthum);
   } else {
-    VERBPRINT(3, "Received data of unknown type %x: %ud 0x%x\n", buf[0], valrcvd, valrcvd);
+    VERBPRINT(3, "Received data of unknown type 0x%x: %u 0x%x\n", buf[0], valrcvd, valrcvd);
   }
   return ret;
 }
