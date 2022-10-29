@@ -143,7 +143,7 @@ co2mini_UpdateData($$@)
     Log3 $name, 3, "co2mini incoming data too short";
     return;
   }
-  elsif($data[4] != 0xd) {
+  elsif($data[4] != 0x0d) {
     Log3 $name, 3, "co2mini unexpected byte 5";
     return;
   }
@@ -161,6 +161,8 @@ co2mini_UpdateData($$@)
     readingsBulkUpdate($hash, "temperature", $value/16.0 - 273.15);
   } elsif ($item == 0x44) {
     readingsBulkUpdate($hash, "humidity", $value/100.0);
+  } elsif ($item == 0x41) {
+    readingsBulkUpdate($hash, "humidity", $value/100.0);
   }
   if ($showraw) {
     readingsBulkUpdate($hash, sprintf("raw_%02X", $item), $value);
@@ -177,16 +179,21 @@ co2mini_Read($)
   my $showraw = AttrVal($name, "showraw", 0);
 
   readingsBeginUpdate($hash);
-    
+
   if ($hash->{DeviceName} =~ m/\@directio$/) {
     $buf = DevIo_SimpleRead($hash);
 
     $readlength = length $buf;
     if (defined($buf) || ($readlength > 0)) {
-      my @data = co2mini_decrypt($key, $buf);
-      
+      my @data = map { ord } split(//, $buf);
+      # Some sensors send the data unencrypted, we try to find out if that is
+      # the case here.
+      if (($data[4] != 0x0d)
+       || ((($data[0] + $data[1] + $data[2]) & 0xff) != $data[3])) {
+        # Does not seem to be valid without decryption, so try to decrypt it.
+        @data = co2mini_decrypt($key, $buf);
+      }
       co2mini_UpdateData($hash, $showraw, @data);
-      
     }
   } else {
     $buf = DevIo_SimpleRead($hash);
